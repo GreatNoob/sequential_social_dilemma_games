@@ -13,6 +13,7 @@ from social_dilemmas.config.default_args import add_default_args
 from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.switch import SwitchEnv
+from social_dilemmas.envs.NewCleanUp import NewCleanupEnv
 
 
 class Controller(object):
@@ -27,6 +28,9 @@ class Controller(object):
         elif self.env_name == "switch":
             print("Initializing Switch environment")
             self.env = SwitchEnv(args, num_agents=1)
+        elif self.env_name == "newcleanup":
+            print("Initializing newCleanUp environment")
+            self.env = NewCleanupEnv(num_agents=3)
         else:
             print("Error! Not a valid environment type")
             return
@@ -66,8 +70,8 @@ class Controller(object):
 
             if save_path is not None:
                 self.env.render(filename=save_path + "frame" + str(i).zfill(6) + ".png")
-                if i % 10 == 0:
-                    print("Saved frame " + str(i) + "/" + str(horizon))
+                #if i % 10 == 0:
+                print("Saved frame " + str(i) + "/" + str(horizon))
 
             rgb_arr = self.env.full_map_to_colors()
             full_obs[i] = rgb_arr.astype(np.uint8)

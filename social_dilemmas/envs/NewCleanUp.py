@@ -31,7 +31,7 @@ wasteSpawnProbability = 0.5
 appleRespawnProbability = 0.05
 
 
-class CleanupEnv(MapEnv):
+class NewCleanupEnv(MapEnv):
     def __init__(
         self,
         ascii_map=CLEANUP_MAP,

@@ -10,13 +10,13 @@ class TestRollout(unittest.TestCase):
             pass
 
         args = Args()
-        args.env = "cleanup"
+        args.env = "newcleanup"
 
         self.controller = Controller(args)
 
     def test_rollouts(self):
         path = os.path.abspath(os.path.dirname(__file__))
-        self.controller.render_rollout(horizon=5, path=path)
+        self.controller.render_rollout(horizon=400, path=path)
         # cleanup
         if os.path.exists("tests/cleanup_trajectory.mp4"):
             os.remove("tests/cleanup_trajectory.mp4")
