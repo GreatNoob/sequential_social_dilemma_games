@@ -34,6 +34,7 @@ class Agent(object):
             how many rows up and down the agent can look
         col_size: (int)
             how many columns left and right the agent can look
+        Energy:
         """
         self.agent_id = agent_id
         self.pos = np.array(start_pos)
@@ -43,6 +44,7 @@ class Agent(object):
         self.col_size = col_size
         self.reward_this_turn = 0
         self.prev_visible_agents = None
+        self.energy = 100
 
     @property
     def action_space(self):
@@ -103,6 +105,9 @@ class Agent(object):
     def get_orientation(self):
         return self.orientation
 
+    def get_energy(self):
+        return self.energy
+    
     def return_valid_pos(self, new_pos):
         """Checks that the next pos is legal, if not return current pos"""
         ego_new_pos = new_pos  # self.translate_pos_to_egocentric_coord(new_pos)
@@ -132,6 +137,9 @@ class Agent(object):
             validated_new_pos = self.pos
         self.set_pos(validated_new_pos)
         # TODO(ev) list array consistency
+        # update energy everytime they move
+        self.energy = self.energy = self.energy - 1
+        print (self.agent_id, "moves - energy: ", self.energy)
         return self.pos, np.array(old_pos)
 
     def is_tile_walkable(self, row, column):
@@ -178,6 +186,8 @@ class HarvestAgent(Agent):
     def fire_beam(self, char):
         if char == b"F":
             self.reward_this_turn -= 1
+            self.energy = self.energy - 5
+            print (self.agent_id, "Fire - energy: ", self.energy)
 
     def get_done(self):
         return False
@@ -212,18 +222,26 @@ class CleanupAgent(Agent):
     def fire_beam(self, char):
         if char == b"F":
             self.reward_this_turn -= 1
-
+            self.energy = self.energy - 1
+            print (self.agent_id, "fire beam - energy: ", self.energy)
+        elif char == b"C":
+            self.reward_this_turn += 1
+            self.energy = self.energy - 1
+            print (self.agent_id, "Clean - energy: ", self.energy)
+            
     def get_done(self):
         return False
 
     def hit(self, char):
         if char == b"F":
-            self.reward_this_turn -= 50
+            self.reward_this_turn -= 0
 
     def consume(self, char):
         """Defines how an agent interacts with the char it is standing on"""
-        if char == b"A":
+        if char == b"A" and self.energy < 90:
             self.reward_this_turn += 1
+            self.energy = self.energy + 33
+            print (self.agent_id, "Consumes + energy: ", self.energy)
             return b" "
         else:
             return char
