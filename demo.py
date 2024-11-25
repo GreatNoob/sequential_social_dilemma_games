@@ -30,14 +30,16 @@ BASE_ACTIONS_REVERSE = {
     4: "STAY",
     5: "TURN_CLOCKWISE",
     6: "TURN_COUNTERCLOCKWISE",
+    7: "FIRE",
+    8: "CLEAN",
 }
 BASE_ACTIONS_REVERSE = {v: k for k, v in BASE_ACTIONS_REVERSE.items()}
 
 ORIENTATION_MATRICES = {
     "UP": np.array([[1, 0], [0, 1]]),
-    "LEFT": np.array([[0, -1], [1, 0]]),  
+    "LEFT": np.array([[0, 1], [-1, 0]]),  
     "DOWN": np.array([[-1, 0], [0, -1]]), 
-    "RIGHT": np.array([[0, 1], [-1, 0]]),
+    "RIGHT": np.array([[0, -1], [1, 0]]),
 }
 
 def transform_action(action, orientation):
@@ -58,16 +60,21 @@ class SocailWarfare(Strategy):
 
     def __init__(self, agent: agent.HarvestAgent):
         super().__init__(agent)
-        self.objective = b"S"
+        self.objective = b"H"
+
+    def get_view_slice(self):
+        row, col = self.agent.pos
+        view_slice = self.agent.full_map[
+            row : row + self.agent.view_len * 2 + 1,
+            col : col + self.agent.view_len * 2 + 1,
+        ]
+        return view_slice
 
     def action(self, observation):
-        
         orientation = self.agent.get_orientation()
-
+        
         full_map: np.array  = self.agent.full_map
         player_pos = self.agent.get_pos()
-        if full_map[player_pos[0], player_pos[1]] == self.objective:
-            return BASE_ACTIONS_REVERSE["STAY"]
 
         objective_pos = np.where(full_map == self.objective)
         if len(objective_pos[0]) == 0:
@@ -75,8 +82,25 @@ class SocailWarfare(Strategy):
         
         objective_pos = np.array(objective_pos).T
         # find the closest objective
-        closest_objective = np.argmin(np.linalg.norm(objective_pos - player_pos, axis=1))
-        closest_objective = objective_pos[closest_objective]
+        distances = np.linalg.norm(objective_pos - player_pos, axis=1)
+
+        closest_objective_index = np.argmin(distances)
+        closest_objective = objective_pos[closest_objective_index]
+
+        if distances[closest_objective_index] < 2:
+            if closest_objective[0] > player_pos[0]:
+                turn_orientation = "DOWN"
+            elif closest_objective[0] < player_pos[0]:
+                turn_orientation = "UP"
+            elif closest_objective[1] > player_pos[1]:
+                turn_orientation = "RIGHT"
+            elif closest_objective[1] < player_pos[1]:
+                turn_orientation = "LEFT"
+
+            if orientation != turn_orientation:
+                return BASE_ACTIONS_REVERSE["TURN_CLOCKWISE"]
+            else:
+                return BASE_ACTIONS_REVERSE["CLEAN"]
 
         # select the action that moves the player towards the objective
         if closest_objective[0] > player_pos[0]:
@@ -90,9 +114,7 @@ class SocailWarfare(Strategy):
         else:
             action = "STAY"
 
-        if orientation != "UP":
-            action = transform_action(action, orientation)
-
+        action = transform_action(action, orientation)
         return BASE_ACTIONS_REVERSE[action]
 
 import time
@@ -108,7 +130,7 @@ def draw(rgb_array, screen, height, width):
 def main():
     pygame.init()
 
-    env = env_creator.get_env_creator("cleanup", num_agents=5)(1)
+    env = env_creator.get_env_creator("newcleanup", num_agents=5)(1)
     obs = env.reset()
     strategies = {agent_id: SocailWarfare(agent) for agent_id, agent in env.agents.items()}
     rgb_arr = env.render(mode="array")
@@ -123,7 +145,7 @@ def main():
 
         actions = {}
         for agent_id, agent in env.agents.items():
-            action = strategies[agent_id].action(obs)
+            action = strategies[agent_id].action(obs[agent_id])
             actions[agent_id] = action
 
         screen.fill((0, 0, 0))
