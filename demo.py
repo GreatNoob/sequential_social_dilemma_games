@@ -53,6 +53,58 @@ class Strategy:
     def __init__(self, agent: agent.HarvestAgent):
         self.agent = agent
 
+    def move_towards(self, pos):
+        orientation = self.agent.get_orientation()
+        player_pos = self.agent.get_pos()
+
+        if pos[0] > player_pos[0]:
+            action = "MOVE_DOWN"
+        elif pos[0] < player_pos[0]:
+            action = "MOVE_UP"
+        elif pos[1] > player_pos[1]:
+            action = "MOVE_RIGHT"
+        elif pos[1] < player_pos[1]:
+            action = "MOVE_LEFT"
+        else:
+            action = "STAY"
+
+        action = transform_action(action, orientation)
+        return action
+
+    def turn_towards(self, pos):
+        player_pos = self.agent.get_pos()
+        orientation = self.agent.get_orientation()
+
+        if pos[0] > player_pos[0]:
+            turn_orientation = "DOWN"
+        elif pos[0] < player_pos[0]:
+            turn_orientation = "UP"
+        elif pos[1] > player_pos[1]:
+            turn_orientation = "RIGHT"
+        elif pos[1] < player_pos[1]:
+            turn_orientation = "LEFT"
+        
+        if orientation != turn_orientation:
+            return "TURN_CLOCKWISE"
+        else:
+            return "NONE"
+        
+    def find_closest(self, objective) :
+        full_map: np.array  = self.agent.full_map
+        player_pos = self.agent.get_pos()
+
+        objective_pos = np.where(full_map == objective)
+        if len(objective_pos[0]) == 0:
+            return None, None
+        
+        objective_pos = np.array(objective_pos).T
+        # find the closest objective
+        distances = np.linalg.norm(objective_pos - player_pos, axis=1)
+
+        closest_objective_index = np.argmin(distances)
+        closest_objective = objective_pos[closest_objective_index]
+        return closest_objective, distances[closest_objective_index]
+        
     def action(self, observation):
         raise NotImplementedError
     
@@ -71,51 +123,83 @@ class SocailWarfare(Strategy):
         return view_slice
 
     def action(self, observation):
-        orientation = self.agent.get_orientation()
-        
-        full_map: np.array  = self.agent.full_map
-        player_pos = self.agent.get_pos()
-
-        objective_pos = np.where(full_map == self.objective)
-        if len(objective_pos[0]) == 0:
+        obj_pos, distance = self.find_closest(self.objective)
+        if obj_pos is None:
             return BASE_ACTIONS_REVERSE["STAY"]
-        
-        objective_pos = np.array(objective_pos).T
-        # find the closest objective
-        distances = np.linalg.norm(objective_pos - player_pos, axis=1)
 
-        closest_objective_index = np.argmin(distances)
-        closest_objective = objective_pos[closest_objective_index]
-
-        if distances[closest_objective_index] < 2:
-            if closest_objective[0] > player_pos[0]:
-                turn_orientation = "DOWN"
-            elif closest_objective[0] < player_pos[0]:
-                turn_orientation = "UP"
-            elif closest_objective[1] > player_pos[1]:
-                turn_orientation = "RIGHT"
-            elif closest_objective[1] < player_pos[1]:
-                turn_orientation = "LEFT"
-
-            if orientation != turn_orientation:
-                return BASE_ACTIONS_REVERSE["TURN_CLOCKWISE"]
+        if distance < 2:
+            action = self.turn_towards(obj_pos)
+            if action != "NONE":
+                return BASE_ACTIONS_REVERSE[action]
             else:
                 return BASE_ACTIONS_REVERSE["CLEAN"]
 
         # select the action that moves the player towards the objective
-        if closest_objective[0] > player_pos[0]:
-            action = "MOVE_DOWN"
-        elif closest_objective[0] < player_pos[0]:
-            action = "MOVE_UP"
-        elif closest_objective[1] > player_pos[1]:
-            action = "MOVE_RIGHT"
-        elif closest_objective[1] < player_pos[1]:
-            action = "MOVE_LEFT"
-        else:
-            action = "STAY"
-
-        action = transform_action(action, orientation)
+        action = self.move_towards(obj_pos)
         return BASE_ACTIONS_REVERSE[action]
+    
+
+class RandomStrategy(Strategy):
+
+    def __init__(self, agent: agent.HarvestAgent):
+        super().__init__(agent)
+        self.n_act = len(BASE_ACTIONS_REVERSE)
+
+    def action(self, observation):
+        return np.random.randint(self.n_act)
+    
+
+class CoopStrategy(Strategy):
+
+    def __init__(self, agent: agent.HarvestAgent):
+        super().__init__(agent)
+        self.clean_distance_threshold = 5
+        self.state = "CLEAN"
+        self.eat_count = 0
+
+    def action(self, observation):
+        if self.state == "CLEAN":
+            obj_pos, distance = self.find_closest(b"H")
+            if obj_pos is None:
+                self.state = "EAT"
+                return self.action(observation)
+
+            if distance < 2:
+                action = self.turn_towards(obj_pos)
+                self.clean_distance_threshold = 5
+
+                if action != "NONE":
+                    return BASE_ACTIONS_REVERSE[action]
+                else:
+                    return BASE_ACTIONS_REVERSE["CLEAN"]
+                
+            elif distance > self.clean_distance_threshold:
+                self.state = "EAT"
+                return self.action(observation)
+            
+        elif self.state == "EAT":
+            obj_pos, distance = self.find_closest(b"A")
+            if obj_pos is None:
+                self.state = "CLEAN"
+                self.clean_distance_threshold = 100
+                return self.action(observation)
+
+            if distance < 2:
+                action = self.turn_towards(obj_pos)
+
+                if action != "NONE":
+                    return BASE_ACTIONS_REVERSE[action]
+                else:
+                    self.eat_count += 1
+                    if self.eat_count >= 5:
+                        self.state = "CLEAN"
+                        self.clean_distance_threshold = 100
+                        self.eat_count = 0
+                    return BASE_ACTIONS_REVERSE["FIRE"]
+        
+        action = self.move_towards(obj_pos)
+        return BASE_ACTIONS_REVERSE[action]
+
 
 import time
 GRID_SIZE = 30
@@ -132,7 +216,7 @@ def main():
 
     env = env_creator.get_env_creator("newcleanup", num_agents=5)(1)
     obs = env.reset()
-    strategies = {agent_id: SocailWarfare(agent) for agent_id, agent in env.agents.items()}
+    strategies = {agent_id: CoopStrategy(agent) for agent_id, agent in env.agents.items()}
     rgb_arr = env.render(mode="array")
     height, width, _ = rgb_arr.shape
     screen = pygame.display.set_mode((width * GRID_SIZE, height * GRID_SIZE))
